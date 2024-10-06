@@ -1,0 +1,107 @@
+version: "3.9"
+services:
+  flyway:
+    image: flyway/flyway:latest
+    command: -locations=filesystem:/flyway/sql -connectRetries=60 -url=jdbc:postgresql://postgres_container:5432/anomaly_db -user=anomaly_user -password=password123 migrate
+    volumes:
+      - ./sql_versions:/flyway/sql
+    
+    depends_on:
+      - postgres
+    networks:
+      - postgres
+
+  postgres:
+    container_name: postgres_container
+    image: postgres:latest
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "effective_cache_size=4GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "temp_file_limit=10GB"
+      - "-c"
+      - "log_min_duration_statement=200ms"
+      - "-c"
+      - "idle_in_transaction_session_timeout=10s"
+      - "-c"
+      - "lock_timeout=1s"
+      - "-c"
+      - "statement_timeout=60s"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.max=10000"
+      - "-c"
+      - "pg_stat_statements.track=all"
+    environment:
+      POSTGRES_DB: "anomaly_db"
+      POSTGRES_USER: "anomaly_user"
+      POSTGRES_PASSWORD: "password123"
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - ./dbdata:/var/lib/postgresql/data
+      - ./test:/test
+    ports:
+      - "5432:5432"
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anomaly_user -d anomaly_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 4G
+    networks:
+      - postgres
+
+  pgadmin:
+    container_name: pgadmin_container
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "user@course.com"
+      PGADMIN_DEFAULT_PASSWORD: "password123"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - ./pgAdminHome:/home
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    networks:
+      - postgres
+
+  web:
+    build: .
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
+    networks:
+      - postgres
+
+volumes:
+  pgadmin-data:
+
+networks:
+  postgres:
+    driver: bridge
